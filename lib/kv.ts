@@ -74,32 +74,22 @@ export async function getLastUpdated() {
 }
 
 // Hàm helper để lưu dữ liệu cảm biến vào KV hoặc bộ nhớ cục bộ
-export async function saveSensorData(newData: any[]) {
-  const currentData = await getSensorData()
-  const latestTime = new Date(currentData.at(-1)?.timestamp || 0)
+export async function saveSensorData(data: any[]) {
+  const limitedData = data.slice(-100)
 
-  const validNewData = newData.filter(d => {
-    const t = new Date(d.timestamp)
-    return !isNaN(t.getTime()) && t > latestTime
-  })
-
-  const combined = [...currentData, ...validNewData]
-  const limited = combined.slice(-100)
-
-  console.log("💾 Saving valid sensor data, count:", validNewData.length)
-  console.log("📊 Total stored records:", limited.length)
+  console.log("💾 Saving sensor data, count:", limitedData.length)
 
   if (kv) {
     try {
-      await kv.set(KV_KEYS.SENSOR_DATA, limited)
+      await kv.set(KV_KEYS.SENSOR_DATA, limitedData)
       return true
     } catch (error) {
       console.error("❌ Error saving sensor data to KV:", error)
-      localSensorData = limited
+      localSensorData = limitedData
       return false
     }
   } else {
-    localSensorData = limited
+    localSensorData = limitedData
     return true
   }
 }
