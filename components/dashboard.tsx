@@ -120,7 +120,7 @@ export default function Dashboard() {
     loadData()
 
     // Cập nhật dữ liệu mỗi 10 giây thay vì 5 giây để giảm tải
-    const interval = setInterval(loadData, 120000)
+    const interval = setInterval(loadData, 60000)
     return () => clearInterval(interval)
   }, [])
 
