@@ -4,12 +4,12 @@ const isKVConfigured =
   process.env.KV_REST_API_URL.startsWith("https://") &&
   process.env.KV_REST_API_TOKEN
 
-// Biến lưu trữ dữ liệu tạm thời khi không có KV
+// Biến lưu dữ liệu tạm thời nếu không dùng được KV
 let localSensorData: any[] = []
 let localLatestData: any = null
 let localLastUpdated: string = new Date().toISOString()
 
-// Import KV chỉ khi đã được cấu hình
+// Import KV nếu được cấu hình
 let kv: any = null
 if (isKVConfigured) {
   try {
@@ -21,13 +21,14 @@ if (isKVConfigured) {
   }
 }
 
+// Keys dùng trong KV
 export const KV_KEYS = {
   SENSOR_DATA: "sensor_data",
   LATEST_DATA: "latest_data",
   LAST_UPDATED: "last_updated",
 }
 
-// Helper lấy dữ liệu cảm biến
+// Lấy toàn bộ dữ liệu sensor (mảng)
 export async function getSensorData() {
   if (kv) {
     try {
@@ -42,7 +43,7 @@ export async function getSensorData() {
   }
 }
 
-// Lấy dữ liệu mới nhất
+// Lấy bản dữ liệu mới nhất
 export async function getLatestData() {
   if (kv) {
     try {
@@ -61,7 +62,7 @@ export async function getLastUpdated() {
   if (kv) {
     try {
       const timestamp = await kv.get(KV_KEYS.LAST_UPDATED)
-      return timestamp ? (timestamp as string) : localLastUpdated
+      return timestamp ? String(timestamp) : localLastUpdated
     } catch (error) {
       console.error("❌ Error fetching last updated time from KV:", error)
       return localLastUpdated
@@ -71,44 +72,43 @@ export async function getLastUpdated() {
   }
 }
 
-// ⛔️ BẢN GHI CŨ VẪN BỊ LƯU → sửa ở đây:
+// Lưu mảng dữ liệu cảm biến vào KV (hoặc local)
 export async function saveSensorData(newData: any[]) {
   if (!Array.isArray(newData)) {
-    console.warn("⚠️ saveSensorData: dữ liệu không phải mảng")
+    console.warn("⚠️ saveSensorData: Dữ liệu không hợp lệ, phải là mảng")
     return false
   }
 
-  const now = new Date().toISOString()
-
   let existingData: any[] = []
+
   if (kv) {
     try {
       const existing = await kv.get(KV_KEYS.SENSOR_DATA)
       existingData = Array.isArray(existing) ? existing : []
     } catch (error) {
-      console.error("❌ Error reading existing sensor data from KV:", error)
+      console.error("❌ Lỗi khi đọc dữ liệu cũ từ KV:", error)
     }
   } else {
     existingData = localSensorData
   }
 
-  // Gộp và loại bỏ trùng timestamp
+  // Gộp và loại trùng timestamp
   const mergedData = [...existingData, ...newData]
     .filter((item) => item.timestamp)
-    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()) // mới nhất lên đầu
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .filter((item, index, self) =>
       index === self.findIndex((i) => i.timestamp === item.timestamp)
     )
-    .slice(0, 100) // giữ 100 bản mới nhất
+    .slice(0, 100)
 
-  console.log("💾 Saving merged sensor data, count:", mergedData.length)
+  console.log("💾 Đang lưu dữ liệu cảm biến, số lượng:", mergedData.length)
 
   if (kv) {
     try {
       await kv.set(KV_KEYS.SENSOR_DATA, mergedData)
       return true
     } catch (error) {
-      console.error("❌ Error saving sensor data to KV:", error)
+      console.error("❌ Lỗi khi lưu dữ liệu vào KV:", error)
       localSensorData = mergedData
       return false
     }
@@ -118,7 +118,7 @@ export async function saveSensorData(newData: any[]) {
   }
 }
 
-// Lưu latest data nếu timestamp mới hơn
+// Lưu bản mới nhất nếu timestamp mới hơn
 export async function saveLatestData(data: any) {
   const now = new Date().toISOString()
   const incomingTimestamp = data?.timestamp ? new Date(data.timestamp).getTime() : 0
@@ -126,18 +126,18 @@ export async function saveLatestData(data: any) {
   const current = await getLatestData()
   const currentTimestamp = current?.timestamp ? new Date(current.timestamp).getTime() : 0
 
-  console.log("🕒 Incoming latest data timestamp:", data?.timestamp)
-  console.log("🕒 Current stored latest data timestamp:", current?.timestamp)
+  console.log("🕒 Dữ liệu mới:", data?.timestamp)
+  console.log("🕒 Dữ liệu hiện tại:", current?.timestamp)
 
   if (incomingTimestamp >= currentTimestamp) {
     if (kv) {
       try {
         await kv.set(KV_KEYS.LATEST_DATA, data)
         await kv.set(KV_KEYS.LAST_UPDATED, now)
-        console.log("✅ Saved new latest data")
+        console.log("✅ Đã lưu bản latest mới")
         return true
       } catch (error) {
-        console.error("❌ Error saving latest data to KV:", error)
+        console.error("❌ Lỗi khi lưu bản latest vào KV:", error)
         localLatestData = data
         localLastUpdated = now
         return false
@@ -145,16 +145,16 @@ export async function saveLatestData(data: any) {
     } else {
       localLatestData = data
       localLastUpdated = now
-      console.log("✅ Saved new latest data (local)")
+      console.log("✅ Đã lưu bản latest mới (local)")
       return true
     }
   } else {
-    console.warn("⚠️ Ignored incoming data because it is older than current data")
+    console.warn("⚠️ Bỏ qua vì dữ liệu mới cũ hơn dữ liệu hiện tại")
     return false
   }
 }
 
-// Kiểm tra trạng thái KV
+// Kiểm tra KV đang hoạt động
 export function isKVAvailable() {
   return !!kv
 }
